@@ -1,0 +1,16 @@
+Source: guideos-grub-theme
+Section: utils
+Priority: optional
+Maintainer: Nightworker <nightworker@guideos.de>
+Build-Depends: debhelper-compat (= 10)
+Standards-Version: 4.5.0
+Homepage: https://github.com/GuideOS/guideos-grub-theme
+
+Package: guideos-grub-theme
+Architecture: all
+Depends: python3, grub-common, ${misc:Depends}
+Description: Grafischer Grubtheme-Manager mit Galerie-Vorschau
+ Ein komfortables Werkzeug zum Verwalten von Grub-Bootloader-Themes.
+ Das Programm zeigt Thumbnails aus /boot/grub/themes/ in einer
+ klickbaren Galerie mit großer Vorschau an und ermöglicht den
+ einfachen Wechsel des aktiven Themes.
