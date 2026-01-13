@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Exec=guideos-grub-theme.py
+Name=GuideOS Grub Theme
+Name[de]=GuideOS Grub Theme
+Comment=Grub Theme ändern
+Icon=/usr/share/pixmaps/guideos-grub-theme.png
+Terminal=false
+Type=Application
+Categories=GuideOS;
+Name[de_DE]=GuideOS Grub Theme
+
