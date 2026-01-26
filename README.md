@@ -19,6 +19,6 @@ cd grub-theme
 dpkg-buildpackage -us -uc
 
 # Install (as root)
-sudo dpkg -i
+sudo dpkg -i ./guideos-grub-theme_1.0-1_all.deb
 sudo apt-get install -f  # Resolve dependencies if needed
 ```
