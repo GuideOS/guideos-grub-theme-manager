@@ -12,13 +12,13 @@ des aktiven Themes.
 
 ```bash
 # Clone repository
-git clone https://github.com/GuideOS/primo-di-tutto.git
-cd primo-di-tutto
+git clone https://github.com/Nightworker-DE/guideos-grub-theme.git
+cd grub-theme
 
 # Create DEB package
-dpkg-source --build ./
+dpkg-buildpackage -us -uc
 
 # Install (as root)
-sudo dpkg -i ../primo_*.deb
+sudo dpkg -i
 sudo apt-get install -f  # Resolve dependencies if needed
 ```
