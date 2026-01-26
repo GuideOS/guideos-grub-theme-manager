@@ -1,6 +1,7 @@
 GuideOS-2/                    boot/grub/themes/
 GuideOS-3/                    boot/grub/themes/
 GuideOS-4/                    boot/grub/themes/
+GuideOS-5/                    boot/grub/themes/
 guideos-grub-theme.py         usr/bin/
 guideos-grub-theme.desktop    usr/share/applications/
 guideos-grub-theme.png        usr/share/pixmaps/
