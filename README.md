@@ -8,7 +8,7 @@ The program is a graphical GRUB theme manager that displays installed bootloader
 ```bash
 # Clone repository
 git clone https://github.com/Nightworker-DE/guideos-grub-theme.git
-cd grub-theme
+cd guideos-grub-theme
 
 # Create DEB package
 dpkg-buildpackage -us -uc
