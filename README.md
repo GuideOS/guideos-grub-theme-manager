@@ -1,6 +1,5 @@
 ## ✨ Übersicht
-Das Programm ist ein grafischer Grub-Theme-Manager, der installierte Bootloader-Themes übersichtlich in einer Galerie mit Thumbnail- und Großvorschau darstellt. Es ermöglicht das einfache Auswählen und Aktivieren von Grub-Themes aus dem
-Verzeichnis /boot/grub/themes/ per Mausklick.
+The program is a graphical GRUB theme manager that displays installed bootloader themes in a clear gallery with thumbnail and large preview. It allows users to easily select and activate GRUB themes from the /boot/grub/themes/ directory with a single click.
 
 ## 🔧 Installation
 
