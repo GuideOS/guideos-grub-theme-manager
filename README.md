@@ -3,9 +3,6 @@ Das Programm ist ein grafischer Grub-Theme-Manager, der installierte Bootloader-
 Verzeichnis /boot/grub/themes/ per Mausklick.
 
 \
-\
-
-
 
 ## 🔧 Installation
 
