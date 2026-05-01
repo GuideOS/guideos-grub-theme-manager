@@ -3,19 +3,3 @@ The program is a graphical GRUB theme manager that displays installed bootloader
 
 <img width="1302" height="776" alt="Bildschirmfoto vom 2026-01-26 15-15-37" src="https://github.com/user-attachments/assets/b4023257-6364-471e-8cdd-64f43794b5d8" />
 
-## 🔧 Installation
-
-### Build from DEB Package:
-
-```bash
-# Clone repository
-git clone https://github.com/GuideOS/guideos-grub-theme-manager.git
-cd guideos-grub-theme
-
-# Create DEB package
-dpkg-buildpackage -us -uc
-
-# Install (as root)
-sudo dpkg -i ./guideos-grub-theme_1.0-1_all.deb
-sudo apt-get install -f  # Resolve dependencies if needed
-```
