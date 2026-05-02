@@ -5,7 +5,7 @@
 # Titel: GuideOS Grub Theme Manager
 # Version: 1.0.3
 # Autor: Nightworker
-# Datum: 2025-12-25
+# Datum: 2026-05-02
 # Beschreibung: Grafischer Grub-Theme-Manager mit Galerie-Vorschau
 # Ein komfortables Werkzeug zum Verwalten von Grub-Bootloader-Themes.
 # Das Programm zeigt Thumbnails aus /boot/grub/themes/ in einer
