@@ -3,7 +3,7 @@
 
 # =======================================================================
 # Titel: GuideOS Grub Theme Manager
-# Version: 1.3
+# Version: 1.0.3
 # Autor: Nightworker
 # Datum: 2025-12-25
 # Beschreibung: Grafischer Grub-Theme-Manager mit Galerie-Vorschau
