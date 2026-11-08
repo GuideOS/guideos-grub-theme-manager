@@ -2,15 +2,14 @@
 # -*- coding: utf-8 -*-
 
 # =======================================================================
-# Titel: GuideOS Grub Theme Manager
-# Version: 1.0.3
+# Titel: GuideOS Grub Theme Selector
+# Version: 1.0.5
 # Autor: Nightworker
-# Datum: 2026-05-02
+# Datum: 2025-12-25 (aktualisiert mit FileChooser-Vorschau & Autoskalierung)
 # Beschreibung: Grafischer Grub-Theme-Manager mit Galerie-Vorschau
 # Ein komfortables Werkzeug zum Verwalten von Grub-Bootloader-Themes.
 # Das Programm zeigt Thumbnails aus /boot/grub/themes/ in einer
-# klickbaren Galerie mit großer Vorschau an und ermöglicht den
-# einfachen Wechsel des aktiven Themes.
+# klickbaren Galerie an und ermöglicht den Wechsel von Themes und Splash-Bildern.
 # Lizenz: MIT
 # ======================================================================
 
@@ -18,6 +17,7 @@ import os
 import sys
 import subprocess
 import shlex
+import tempfile
 import gi
 
 gi.require_version('Gtk', '3.0')
@@ -28,6 +28,7 @@ GRUB_FILE = "/etc/default/grub"
 THEMES_DIR = "/boot/grub/themes"
 THUMB_SIZE = (250, 160)
 PREVIEW_SIZE = (800, 500)
+MAX_SPLASH_RES = (1920, 1080)
 
 def find_themes(themes_dir=THEMES_DIR):
     themes = {}
@@ -59,17 +60,24 @@ def find_preview_image(theme_dir):
 
 class GrubThemeSelector(Gtk.Window):
     def __init__(self):
-        super().__init__(title="GuideOS GRUB Theme Manager")
-        self.set_default_size(1300, 750)
+        super().__init__(title="GuideOS GRUB Theme Selector")
+        self.set_default_size(1300, 800)
         self.connect("destroy", Gtk.main_quit)
 
         self.themes = find_themes()
         self.active_theme_path = get_active_theme()
         self.theme_list = sorted(self.themes.keys(), key=str.lower)
+        self.custom_splash_path = None
+        self.temp_splash_file = None
 
         self.setup_ui()
         self.load_gallery()
         self.show_all()
+
+    def __del__(self):
+        if self.temp_splash_file and os.path.exists(self.temp_splash_file):
+            try: os.remove(self.temp_splash_file)
+            except: pass
 
     def setup_ui(self):
         self.paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
@@ -126,6 +134,31 @@ class GrubThemeSelector(Gtk.Window):
         selection_box.pack_start(self.combo, True, True, 0)
         right_box.pack_start(selection_box, False, False, 0)
 
+        # --- BEREICH: Eigenes Splash-Bild ---
+        splash_frame = Gtk.Frame(label="Manuelles Splash-Bild (optional, max. 1920x1080)")
+        splash_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        splash_box.set_margin_start(10)
+        splash_box.set_margin_end(10)
+        splash_box.set_margin_top(10)
+        splash_box.set_margin_bottom(10)
+
+        btn_choose_splash = Gtk.Button(label="Bild auswählen...")
+        btn_choose_splash.connect("clicked", self.on_choose_custom_splash)
+
+        btn_reset_splash = Gtk.Button(label="Zurücksetzen")
+        btn_reset_splash.connect("clicked", self.on_reset_custom_splash)
+
+        self.lbl_splash_info = Gtk.Label(label="Aktiv: Theme-Standardbild")
+        self.lbl_splash_info.set_xalign(0.0)
+
+        splash_box.pack_start(btn_choose_splash, False, False, 0)
+        splash_box.pack_start(btn_reset_splash, False, False, 0)
+        splash_box.pack_start(self.lbl_splash_info, True, True, 0)
+
+        splash_frame.add(splash_box)
+        right_box.pack_start(splash_frame, False, False, 0)
+
+        # --- Aktions-Buttons ---
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         btn_reload = Gtk.Button(label="Neu laden")
         btn_reload.connect("clicked", self.on_reload)
@@ -205,6 +238,90 @@ class GrubThemeSelector(Gtk.Window):
             self.preview_image.set_from_pixbuf(pb)
         self.update_status(f"Theme gewählt: {name}")
 
+    def on_update_file_preview(self, file_chooser):
+        filename = file_chooser.get_preview_filename()
+        if filename and os.path.isfile(filename):
+            try:
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(filename, 220, 220, True)
+                self.chooser_preview_image.set_from_pixbuf(pixbuf)
+                file_chooser.set_preview_widget_active(True)
+                return
+            except:
+                pass
+        file_chooser.set_preview_widget_active(False)
+
+    def on_choose_custom_splash(self, btn):
+        dialog = Gtk.FileChooserDialog(
+            title="Eigenes Splash-Bild auswählen (wird ggf. auf 1920x1080 skaliert)",
+            parent=self,
+            action=Gtk.FileChooserAction.OPEN
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OPEN, Gtk.ResponseType.OK
+        )
+
+        filter_img = Gtk.FileFilter()
+        filter_img.set_name("Bilder (PNG, JPG)")
+        filter_img.add_mime_type("image/png")
+        filter_img.add_mime_type("image/jpeg")
+        filter_img.add_pattern("*.png")
+        filter_img.add_pattern("*.jpg")
+        filter_img.add_pattern("*.jpeg")
+        dialog.add_filter(filter_img)
+
+        # Integrierte Bildvorschau für den Dateiauswahl-Dialog einrichten
+        self.chooser_preview_image = Gtk.Image()
+        dialog.set_preview_widget(self.chooser_preview_image)
+        dialog.connect("update-preview", self.on_update_file_preview)
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            orig_path = dialog.get_filename()
+            try:
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file(orig_path)
+                orig_w = pixbuf.get_width()
+                orig_h = pixbuf.get_height()
+
+                target_w, target_h = MAX_SPLASH_RES
+
+                if orig_w > target_w or orig_h > target_h:
+                    ratio = min(target_w / orig_w, target_h / orig_h)
+                    new_w = int(orig_w * ratio)
+                    new_h = int(orig_h * ratio)
+                    scaled_pixbuf = pixbuf.scale_simple(new_w, new_h, GdkPixbuf.InterpType.BILINEAR)
+                else:
+                    scaled_pixbuf = pixbuf
+
+                if self.temp_splash_file and os.path.exists(self.temp_splash_file):
+                    try: os.remove(self.temp_splash_file)
+                    except: pass
+
+                fd, self.temp_splash_file = tempfile.mkstemp(suffix=".png", prefix="grub_splash_")
+                os.close(fd)
+
+                scaled_pixbuf.savev(self.temp_splash_file, "png", [], [])
+                self.custom_splash_path = self.temp_splash_file
+
+                filename = os.path.basename(orig_path)
+                scale_info = f" (skaliert von {orig_w}x{orig_h})" if (orig_w > target_w or orig_h > target_h) else ""
+                self.lbl_splash_info.set_text(f"Aktiv: {filename}{scale_info}")
+                self.update_status(f"Eigenes Splash-Bild geladen und angepasst: {filename}")
+
+            except Exception as e:
+                self.update_status(f"Fehler beim Verarbeiten des Bildes: {str(e)}")
+
+        dialog.destroy()
+
+    def on_reset_custom_splash(self, btn):
+        if self.temp_splash_file and os.path.exists(self.temp_splash_file):
+            try: os.remove(self.temp_splash_file)
+            except: pass
+        self.temp_splash_file = None
+        self.custom_splash_path = None
+        self.lbl_splash_info.set_text("Aktiv: Theme-Standardbild")
+        self.update_status("Eigenes Splash-Bild zurückgesetzt (nutze Theme-Standard).")
+
     def on_reload(self, btn):
         self.themes = find_themes()
         self.theme_list = sorted(self.themes.keys(), key=str.lower)
@@ -217,16 +334,20 @@ class GrubThemeSelector(Gtk.Window):
         name = self.combo.get_active_text()
         if not name: return
         theme_path = self.themes[name]
+        theme_dir = os.path.dirname(theme_path)
 
-        # Einstellungen, die wir sicherstellen wollen
+        img_path = self.custom_splash_path if self.custom_splash_path else find_preview_image(theme_dir)
+
         settings = {
             "GRUB_THEME": f'"{theme_path}"',
             "GRUB_GFXMODE": "auto",
             "GRUB_DISABLE_OS_PROBER": "false"
         }
 
-        # Wir bauen ein Bash-Skript im String-Format, das alle Werte prüft/setzt
         bash_script = f"cp {GRUB_FILE} {GRUB_FILE}.backup && "
+
+        if img_path:
+            bash_script += f"cp {shlex.quote(img_path)} /boot/grub/splash.png && "
 
         for key, value in settings.items():
             bash_script += (
@@ -240,9 +361,8 @@ class GrubThemeSelector(Gtk.Window):
         bash_script += "update-grub"
 
         try:
-            # pkexec öffnet das grafische Passwort-Fenster
             subprocess.run(["pkexec", "bash", "-c", bash_script], check=True)
-            self.update_status("Erfolgreich: Theme, GFX und OS-Prober gesetzt!")
+            self.update_status("Erfolgreich: Theme, Splash-Bild, GFX und OS-Prober gesetzt!")
         except subprocess.CalledProcessError:
             self.update_status("Fehler: Passwort falsch oder Abbruch.")
         except Exception as e:
