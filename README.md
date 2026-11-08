@@ -5,5 +5,5 @@
 - klickbaren Galerie an und ermöglicht den Wechsel von Themes und Splash-Bildern.
 
 <div style="display:flex; gap:10px;">
-  <img src="screenshot.webp" width="800">
+  <img src="screenshot.webp" width="700">
 </div>
