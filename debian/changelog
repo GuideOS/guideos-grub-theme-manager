@@ -1,5 +1,5 @@
-guideos-grub-theme (1.0.3) unstable; urgency=low
+guideos-grub-theme (1.0.5) unstable; urgency=low
 
-  * Initial release.
+  * individual spash screen.
 
- -- Nightworker <nightworker@guideos.de>  Sat, 02 May 2026 10:00:00 +0100
+ -- Nightworker <nightworker@guideos.de>  Sun, 08 Nov 2026 10:00:00 +0100
