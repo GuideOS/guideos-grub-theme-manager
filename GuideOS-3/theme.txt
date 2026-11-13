@@ -18,7 +18,7 @@ terminal-border: "0"
   top = 63%
   width = 28%
   height = 55%
-  item_font = "Berlin 20"
+  item_font = "Berlin 17"
   item_color = "#ffffff"
   selected_item_color = "#13c671"
   icon_width = 36
@@ -30,30 +30,15 @@ terminal-border: "0"
   selected_item_pixmap_style = "select_*.png"
 }
 
-# Show logo and circular progress
-+ circular_progress
-{
-   id = "__timeout__"
-   left = 35%
-   top = 85%
-   width = 110
-   height = 110
-   num_ticks = 33
-   ticks_disappear = false
-   start_angle = -67
-   end_angle = -67
-   center_bitmap = "GuideOS.png"
-   tick_bitmap = "dot.png"
-}
 
-#help bar @ bottom
+# Countdown label
+# You can change the name of default starting OS here
 + label {
-	top = 100%-50
-	left = 0
-	width = 90%
-	height = 20
-	text = "@KEYMAP_SHORT@"
-	align = "center"
-	color = "#ffffff"
-	font = "Berlin 20"
+  left = 25%
+  top = 58%
+  align = "center"
+  id = "__timeout__"
+  text = "Selected OS will start in %d seconds"
+  color = "#ffffff"
+  font = "Berlin 17"
 }

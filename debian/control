@@ -8,7 +8,11 @@ Homepage: https://github.com/GuideOS/guideos-grub-theme
 
 Package: guideos-grub-theme
 Architecture: all
-Depends: python3, grub-common, ${misc:Depends}
+Depends: python3,
+         ${misc:Depends},
+         python3-pyqt6,
+         polkit | pkexec,
+         grub-common
 Description: Grafischer Grubtheme-Manager mit Galerie-Vorschau
  Ein komfortables Werkzeug zum Verwalten von Grub-Bootloader-Themes.
  Das Programm zeigt Thumbnails aus /boot/grub/themes/ in einer
