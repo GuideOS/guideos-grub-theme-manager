@@ -1,5 +1,4 @@
-## ✨ Übersicht
-### GuideOS GRUB Theme Selector (PyQt6 Edition)   
+## ✨ GuideOS GRUB Theme Selector (PyQt6 Edition)   
 Ein moderner, grafischer Theme-Manager für GRUB2, entwickelt mit PyQt6. Mit diesem Tool kannst du   
 GRUB-Themes komfortabel verwalten, in einer visuellen Galerie betrachten, Auflösungen anpassen und   
 mit wenigen Klicks sicher auf deinem System anwenden.    
@@ -22,7 +21,7 @@ Passt sich dynamisch an verschiedene Bildschirmgrößen an
 ### 🛠️ Voraussetzungen   
 Eine Linux-Distribution mit GRUB2 als BootloaderPython 3PyQt6Root-Rechte   
 (wird via Polkit / pkexec für die Systemänderungen abgefragt)
-
+- - - 
 <div style="display:flex; gap:10px;">
   <img src="screenshot.webp" width="700">
 </div>
