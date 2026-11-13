@@ -2,15 +2,12 @@
 # -*- coding: utf-8 -*-
 
 # =======================================================================
-# Titel: GuideOS Grub Theme Selector
-# Version: 1.0.5
+# Titel: GuideOS Grub Theme Manager (PyQt6 Edition)
+# Version: 1.0.9 (change in PyQt6)
 # Autor: Nightworker
-# Datum: 2025-12-25 (aktualisiert mit FileChooser-Vorschau & Autoskalierung)
-# Beschreibung: Grafischer Grub-Theme-Manager mit Galerie-Vorschau
-# Ein komfortables Werkzeug zum Verwalten von Grub-Bootloader-Themes.
-# Das Programm zeigt Thumbnails aus /boot/grub/themes/ in einer
-# klickbaren Galerie an und ermöglicht den Wechsel von Themes und Splash-Bildern.
-# Lizenz: MIT
+# Datum: 2026-11-13
+# Beschreibung: Grafischer Grub-Theme-Manager mit Galerie-Vorschau in PyQt6
+# Lizenz: GPLv3
 # ======================================================================
 
 import os
@@ -18,17 +15,19 @@ import sys
 import subprocess
 import shlex
 import tempfile
-import gi
-
-gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GdkPixbuf, Gdk
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QPixmap, QIcon, QImage
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
+    QSplitter, QLineEdit, QListWidget, QListWidgetItem, QLabel,
+    QComboBox, QPushButton, QGroupBox, QStatusBar, QFileDialog,
+    QMessageBox, QInputDialog, QCheckBox, QScrollArea, QSizePolicy
+)
 
 # Konfiguration
 GRUB_FILE = "/etc/default/grub"
 THEMES_DIR = "/boot/grub/themes"
-THUMB_SIZE = (250, 160)
-PREVIEW_SIZE = (800, 500)
-MAX_SPLASH_RES = (1920, 1080)
+DEFAULT_THEME_RES = (2048, 1152)
 
 def find_themes(themes_dir=THEMES_DIR):
     themes = {}
@@ -58,240 +57,275 @@ def find_preview_image(theme_dir):
         if os.path.isfile(p): return p
     return None
 
-class GrubThemeSelector(Gtk.Window):
+class GrubThemeSelector(QMainWindow):
     def __init__(self):
-        super().__init__(title="GuideOS GRUB Theme Selector")
-        self.set_default_size(1300, 800)
-        self.connect("destroy", Gtk.main_quit)
+        super().__init__()
+        self.setWindowTitle("GuideOS GRUB Theme Manager")
+
+        # Auflösung des Hauptbildschirms ermitteln
+        screen_geo = QApplication.primaryScreen().availableGeometry()
+        screen_w = screen_geo.width()
+        screen_h = screen_geo.height()
+
+        # Dynamische Fenster- und Bildgrößen für kleine Bildschirme (z.B. 1366x768)
+        if screen_w <= 1366 or screen_h <= 800:
+            self.resize(min(1050, int(screen_w * 0.9)), min(650, int(screen_h * 0.85)))
+            self.thumb_size = (180, 115)
+            self.preview_size = (560, 350)
+        else:
+            self.resize(1300, 820)
+            self.thumb_size = (250, 160)
+            self.preview_size = (800, 500)
 
         self.themes = find_themes()
         self.active_theme_path = get_active_theme()
         self.theme_list = sorted(self.themes.keys(), key=str.lower)
         self.custom_splash_path = None
         self.temp_splash_file = None
+        self.final_temp_splash = None
 
         self.setup_ui()
         self.load_gallery()
-        self.show_all()
 
-    def __del__(self):
+    def closeEvent(self, event):
         if self.temp_splash_file and os.path.exists(self.temp_splash_file):
             try: os.remove(self.temp_splash_file)
             except: pass
+        if self.final_temp_splash and os.path.exists(self.final_temp_splash):
+            try: os.remove(self.final_temp_splash)
+            except: pass
+        event.accept()
 
     def setup_ui(self):
-        self.paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
-        self.add(self.paned)
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        main_layout = QHBoxLayout(main_widget)
+        main_layout.setContentsMargins(5, 5, 5, 5)
 
-        # --- LINKE SEITE (Suche + Galerie) ---
-        left_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-        left_container.set_margin_start(5)
-        left_container.set_margin_end(5)
-        left_container.set_margin_top(5)
-        left_container.set_margin_bottom(5)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_layout.addWidget(splitter)
 
-        self.search_entry = Gtk.SearchEntry()
-        self.search_entry.set_placeholder_text("Themes durchsuchen...")
-        self.search_entry.connect("changed", self.on_search_changed)
-        left_container.pack_start(self.search_entry, False, False, 5)
+        # --- LINKE SEITE (Suche + Galerie in Symbolansicht) ---
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(5, 5, 5, 5)
 
-        scroll = Gtk.ScrolledWindow()
-        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroll.set_min_content_width(320)
+        self.search_entry = QLineEdit()
+        self.search_entry.setPlaceholderText("Themes durchsuchen...")
+        self.search_entry.textChanged.connect(self.on_search_changed)
+        left_layout.addWidget(self.search_entry)
 
-        self.flowbox = Gtk.FlowBox()
-        self.flowbox.set_valign(Gtk.Align.START)
-        self.flowbox.set_max_children_per_line(1)
-        self.flowbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
-        self.flowbox.connect("child-activated", self.on_flowbox_selected)
-        self.flowbox.set_filter_func(self.filter_themes)
+        self.list_widget = QListWidget()
+        self.list_widget.setViewMode(QListWidget.ViewMode.IconMode)
+        self.list_widget.setIconSize(QSize(self.thumb_size[0], self.thumb_size[1]))
+        self.list_widget.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.list_widget.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.list_widget.currentItemChanged.connect(self.on_list_item_selected)
+        left_layout.addWidget(self.list_widget)
 
-        scroll.add(self.flowbox)
-        left_container.pack_start(scroll, True, True, 0)
-        self.paned.pack1(left_container, False, False)
+        splitter.addWidget(left_widget)
 
-        # --- RECHTE SEITE (Vorschau & Controls) ---
-        right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
-        right_box.set_margin_start(20)
-        right_box.set_margin_end(20)
-        right_box.set_margin_top(20)
-        right_box.set_margin_bottom(10)
+        # --- RECHTE SEITE (Vorschau & Controls mit Scroll-Möglichkeit) ---
+        right_container = QWidget()
+        right_layout = QVBoxLayout(right_container)
+        right_layout.setContentsMargins(10, 10, 10, 10)
+        right_layout.setSpacing(10)
 
-        self.preview_image = Gtk.Image()
-        preview_aspect = Gtk.AspectFrame(label=None, xalign=0.5, yalign=0.5, ratio=1.6, obey_child=False)
-        preview_aspect.set_shadow_type(Gtk.ShadowType.NONE)
-        preview_aspect.add(self.preview_image)
-        right_box.pack_start(preview_aspect, True, True, 0)
+        # Vorschau-Bild
+        self.preview_image_label = QLabel()
+        self.preview_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_image_label.setStyleSheet("background-color: #222222; border-radius: 4px;")
+        self.preview_image_label.setMinimumSize(320, 200)
+        self.preview_image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        right_layout.addWidget(self.preview_image_label, stretch=1)
 
-        selection_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        lbl = Gtk.Label(label="Gewähltes Theme:")
-        selection_box.pack_start(lbl, False, False, 0)
-
-        self.combo = Gtk.ComboBoxText()
+        # Theme Auswahl
+        selection_layout = QHBoxLayout()
+        selection_layout.addWidget(QLabel("Gewähltes Theme:"))
+        self.combo = QComboBox()
         for name in self.theme_list:
-            self.combo.append_text(name)
-        self.combo.connect("changed", self.on_combo_changed)
-        selection_box.pack_start(self.combo, True, True, 0)
-        right_box.pack_start(selection_box, False, False, 0)
+            self.combo.addItem(name)
+        self.combo.currentIndexChanged.connect(self.on_combo_changed)
+        selection_layout.addWidget(self.combo, stretch=1)
+        right_layout.addLayout(selection_layout)
+
+        # --- BEREICH: Bildschirmauflösung & Skalierung ---
+        res_group = QGroupBox("Ziel-Bildschirmauflösung für GRUB")
+        res_layout = QVBoxLayout(res_group)
+
+        self.chk_scale_resolution = QCheckBox("Auflösung anpassen (Aktivieren, um das Bild auf die Zielauflösung zu skalieren)")
+        self.chk_scale_resolution.setChecked(False)
+        self.chk_scale_resolution.toggled.connect(self.on_scale_toggled)
+        res_layout.addWidget(self.chk_scale_resolution)
+
+        hint_label = QLabel(
+            "Hinweis: Standardmäßig werden alle Bilder in einem resourcenschonenden Format (2048x1152) belassen. "
+            "Das Aktivieren höherer Auflösungen (z.B. 4K) kann zu einem deutlich höheren Speicherbedarf auf der /boot-Partition führen."
+        )
+        hint_label.setWordWrap(True)
+        hint_label.setStyleSheet("color: #aaaaaa; font-size: 11px;")
+        res_layout.addWidget(hint_label)
+
+        combo_layout = QHBoxLayout()
+        combo_layout.addWidget(QLabel("Ziel-Auflösung:"))
+        self.combo_resolution = QComboBox()
+        self.combo_resolution.addItems([
+            "1920x1080 (FHD)",
+            "2048x1152 (2K Kompromiss)",
+            "2560x1440 (QHD)",
+            "3840x2160 (4K / UHD)",
+            "Benutzerdefiniert..."
+        ])
+        self.combo_resolution.setEnabled(False)
+        self.combo_resolution.setCurrentIndex(1)
+        combo_layout.addWidget(self.combo_resolution, stretch=1)
+        res_layout.addLayout(combo_layout)
+
+        right_layout.addWidget(res_group)
 
         # --- BEREICH: Eigenes Splash-Bild ---
-        splash_frame = Gtk.Frame(label="Manuelles Splash-Bild (optional, max. 1920x1080)")
-        splash_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        splash_box.set_margin_start(10)
-        splash_box.set_margin_end(10)
-        splash_box.set_margin_top(10)
-        splash_box.set_margin_bottom(10)
+        splash_group = QGroupBox("Manuelles Splash-Bild (optional)")
+        splash_layout = QHBoxLayout(splash_group)
 
-        btn_choose_splash = Gtk.Button(label="Bild auswählen...")
-        btn_choose_splash.connect("clicked", self.on_choose_custom_splash)
+        btn_choose_splash = QPushButton("Bild auswählen...")
+        btn_choose_splash.clicked.connect(self.on_choose_custom_splash)
 
-        btn_reset_splash = Gtk.Button(label="Zurücksetzen")
-        btn_reset_splash.connect("clicked", self.on_reset_custom_splash)
+        btn_reset_splash = QPushButton("Zurücksetzen")
+        btn_reset_splash.clicked.connect(self.on_reset_custom_splash)
 
-        self.lbl_splash_info = Gtk.Label(label="Aktiv: Theme-Standardbild")
-        self.lbl_splash_info.set_xalign(0.0)
+        self.lbl_splash_info = QLabel("Aktiv: Theme-Standardbild")
 
-        splash_box.pack_start(btn_choose_splash, False, False, 0)
-        splash_box.pack_start(btn_reset_splash, False, False, 0)
-        splash_box.pack_start(self.lbl_splash_info, True, True, 0)
-
-        splash_frame.add(splash_box)
-        right_box.pack_start(splash_frame, False, False, 0)
+        splash_layout.addWidget(btn_choose_splash)
+        splash_layout.addWidget(btn_reset_splash)
+        splash_layout.addWidget(self.lbl_splash_info, stretch=1)
+        right_layout.addWidget(splash_group)
 
         # --- Aktions-Buttons ---
-        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        btn_reload = Gtk.Button(label="Neu laden")
-        btn_reload.connect("clicked", self.on_reload)
-        btn_apply = Gtk.Button(label="Theme anwenden")
-        btn_apply.get_style_context().add_class("suggested-action")
-        btn_apply.connect("clicked", self.on_apply)
-        btn_exit = Gtk.Button(label="Beenden")
-        btn_exit.connect("clicked", Gtk.main_quit)
+        btn_layout = QHBoxLayout()
+        btn_reload = QPushButton("Neu laden")
+        btn_reload.clicked.connect(self.on_reload)
+        btn_apply = QPushButton("Theme anwenden")
+        btn_apply.setStyleSheet("font-weight: bold; background-color: #1b5e20; color: white; padding: 6px 12px;")
+        btn_apply.clicked.connect(self.on_apply)
+        btn_exit = QPushButton("Beenden")
+        btn_exit.clicked.connect(self.close)
 
-        btn_box.pack_start(btn_reload, False, False, 0)
-        btn_box.pack_end(btn_exit, False, False, 0)
-        btn_box.pack_end(btn_apply, False, False, 0)
-        right_box.pack_start(btn_box, False, False, 0)
+        btn_layout.addWidget(btn_reload)
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_apply)
+        btn_layout.addWidget(btn_exit)
+        right_layout.addLayout(btn_layout)
 
-        self.statusbar = Gtk.Statusbar()
-        self.status_context = self.statusbar.get_context_id("info")
-        right_box.pack_start(self.statusbar, False, False, 0)
+        # Scrollbereich für kleine Auflösungen integrieren
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setWidget(right_container)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
 
-        self.paned.pack2(right_box, True, True)
+        splitter.addWidget(scroll_area)
+
+        left_width = max(280, int(self.width() * 0.3))
+        right_width = self.width() - left_width
+        splitter.setSizes([left_width, right_width])
+
+        self.statusbar = QStatusBar()
+        self.setStatusBar(self.statusbar)
+
+    def on_scale_toggled(self, checked):
+        self.combo_resolution.setEnabled(checked)
+
+    def get_target_resolution(self):
+        if not self.chk_scale_resolution.isChecked():
+            return f"{DEFAULT_THEME_RES[0]}x{DEFAULT_THEME_RES[1]}"
+
+        text = self.combo_resolution.currentText()
+        if "Benutzerdefiniert" in text:
+            custom_res, ok = QInputDialog.getText(
+                self, "Benutzerdefinierte Auflösung",
+                "Geben Sie die Auflösung ein (Format BxH, z.B. 2560x1080):",
+                QLineEdit.EchoMode.Normal, "2048x1152"
+            )
+            if ok and custom_res:
+                custom_res = custom_res.strip()
+                if "x" in custom_res:
+                    return custom_res
+            return f"{DEFAULT_THEME_RES[0]}x{DEFAULT_THEME_RES[1]}"
+        else:
+            return text.split(" ")[0]
 
     def load_gallery(self):
-        for child in self.flowbox.get_children():
-            self.flowbox.remove(child)
+        self.list_widget.clear()
         for name in self.theme_list:
             theme_dir = os.path.dirname(self.themes[name])
             img_path = find_preview_image(theme_dir)
-            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-            box.set_margin_bottom(15)
-            if img_path:
-                try:
-                    pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(img_path, THUMB_SIZE[0], THUMB_SIZE[1], True)
-                    img_widget = Gtk.Image.new_from_pixbuf(pb)
-                except:
-                    img_widget = Gtk.Image.new_from_icon_name("image-missing", Gtk.IconSize.DIALOG)
-            else:
-                img_widget = Gtk.Image.new_from_icon_name("image-x-generic", Gtk.IconSize.DIALOG)
-                img_widget.set_size_request(THUMB_SIZE[0], THUMB_SIZE[1])
-            box.pack_start(img_widget, False, False, 0)
-            box.pack_start(Gtk.Label(label=name), False, False, 0)
-            child = Gtk.FlowBoxChild()
-            child.theme_name = name
-            child.add(box)
-            self.flowbox.add(child)
+
+            item = QListWidgetItem(name)
+            if img_path and os.path.exists(img_path):
+                pixmap = QPixmap(img_path)
+                scaled = pixmap.scaled(
+                    self.thumb_size[0], self.thumb_size[1],
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                item.setIcon(QIcon(scaled))
+
+            self.list_widget.addItem(item)
+
         if self.active_theme_path:
             for i, name in enumerate(self.theme_list):
                 if self.themes[name] == self.active_theme_path:
-                    self.combo.set_active(i)
+                    self.combo.setCurrentIndex(i)
                     break
-        self.show_all()
+        self.statusbar.showMessage("Galerie geladen.", 3000)
 
-    def filter_themes(self, child):
-        search_text = self.search_entry.get_text().lower()
-        if not search_text: return True
-        return search_text in child.theme_name.lower()
+    def on_search_changed(self, text):
+        search_text = text.lower()
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            match = search_text in item.text().lower()
+            item.setHidden(not match)
 
-    def on_search_changed(self, entry):
-        self.flowbox.invalidate_filter()
+    def on_list_item_selected(self, current, previous):
+        if current:
+            name = current.text()
+            idx = self.combo.findText(name)
+            if idx >= 0 and idx != self.combo.currentIndex():
+                self.combo.setCurrentIndex(idx)
 
-    def update_status(self, text):
-        self.statusbar.push(self.status_context, text)
+    def on_combo_changed(self, index):
+        if index < 0: return
+        name = self.combo.currentText()
+        theme_txt = self.themes.get(name)
+        if not theme_txt: return
 
-    def on_flowbox_selected(self, flowbox, child):
-        if child:
-            name = child.theme_name
-            for i, n in enumerate(self.theme_list):
-                if n == name:
-                    self.combo.set_active(i)
-                    break
-
-    def on_combo_changed(self, combo):
-        name = combo.get_active_text()
-        if not name: return
-        theme_txt = self.themes[name]
         img_path = find_preview_image(os.path.dirname(theme_txt))
-        if img_path:
-            pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(img_path, PREVIEW_SIZE[0], PREVIEW_SIZE[1], True)
-            self.preview_image.set_from_pixbuf(pb)
-        self.update_status(f"Theme gewählt: {name}")
+        if img_path and os.path.exists(img_path):
+            pixmap = QPixmap(img_path)
+            scaled = pixmap.scaled(
+                self.preview_size[0], self.preview_size[1],
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.preview_image_label.setPixmap(scaled)
+        else:
+            self.preview_image_label.clear()
+            self.preview_image_label.setText("Keine Vorschau verfügbar")
 
-    def on_update_file_preview(self, file_chooser):
-        filename = file_chooser.get_preview_filename()
-        if filename and os.path.isfile(filename):
-            try:
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(filename, 220, 220, True)
-                self.chooser_preview_image.set_from_pixbuf(pixbuf)
-                file_chooser.set_preview_widget_active(True)
-                return
-            except:
-                pass
-        file_chooser.set_preview_widget_active(False)
+        self.statusbar.showMessage(f"Theme gewählt: {name}", 3000)
 
-    def on_choose_custom_splash(self, btn):
-        dialog = Gtk.FileChooserDialog(
-            title="Eigenes Splash-Bild auswählen (wird ggf. auf 1920x1080 skaliert)",
-            parent=self,
-            action=Gtk.FileChooserAction.OPEN
+    def on_choose_custom_splash(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Eigenes Splash-Bild auswählen",
+            "",
+            "Bilder (*.png *.jpg *.jpeg)"
         )
-        dialog.add_buttons(
-            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-            Gtk.STOCK_OPEN, Gtk.ResponseType.OK
-        )
-
-        filter_img = Gtk.FileFilter()
-        filter_img.set_name("Bilder (PNG, JPG)")
-        filter_img.add_mime_type("image/png")
-        filter_img.add_mime_type("image/jpeg")
-        filter_img.add_pattern("*.png")
-        filter_img.add_pattern("*.jpg")
-        filter_img.add_pattern("*.jpeg")
-        dialog.add_filter(filter_img)
-
-        # Integrierte Bildvorschau für den Dateiauswahl-Dialog einrichten
-        self.chooser_preview_image = Gtk.Image()
-        dialog.set_preview_widget(self.chooser_preview_image)
-        dialog.connect("update-preview", self.on_update_file_preview)
-
-        response = dialog.run()
-        if response == Gtk.ResponseType.OK:
-            orig_path = dialog.get_filename()
+        if file_path:
             try:
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file(orig_path)
-                orig_w = pixbuf.get_width()
-                orig_h = pixbuf.get_height()
-
-                target_w, target_h = MAX_SPLASH_RES
-
-                if orig_w > target_w or orig_h > target_h:
-                    ratio = min(target_w / orig_w, target_h / orig_h)
-                    new_w = int(orig_w * ratio)
-                    new_h = int(orig_h * ratio)
-                    scaled_pixbuf = pixbuf.scale_simple(new_w, new_h, GdkPixbuf.InterpType.BILINEAR)
-                else:
-                    scaled_pixbuf = pixbuf
+                image = QImage(file_path)
+                if image.isNull():
+                    QMessageBox.warning(self, "Fehler", "Das Bild konnte nicht geladen werden.")
+                    return
 
                 if self.temp_splash_file and os.path.exists(self.temp_splash_file):
                     try: os.remove(self.temp_splash_file)
@@ -300,54 +334,81 @@ class GrubThemeSelector(Gtk.Window):
                 fd, self.temp_splash_file = tempfile.mkstemp(suffix=".png", prefix="grub_splash_")
                 os.close(fd)
 
-                scaled_pixbuf.savev(self.temp_splash_file, "png", [], [])
+                image.save(self.temp_splash_file, "PNG")
                 self.custom_splash_path = self.temp_splash_file
 
-                filename = os.path.basename(orig_path)
-                scale_info = f" (skaliert von {orig_w}x{orig_h})" if (orig_w > target_w or orig_h > target_h) else ""
-                self.lbl_splash_info.set_text(f"Aktiv: {filename}{scale_info}")
-                self.update_status(f"Eigenes Splash-Bild geladen und angepasst: {filename}")
+                filename = os.path.basename(file_path)
+                self.lbl_splash_info.setText(f"Aktiv: {filename}")
+                self.statusbar.showMessage(f"Eigenes Splash-Bild geladen: {filename}", 3000)
 
             except Exception as e:
-                self.update_status(f"Fehler beim Verarbeiten des Bildes: {str(e)}")
+                QMessageBox.critical(self, "Fehler", f"Fehler beim Verarbeiten des Bildes:\n{str(e)}")
 
-        dialog.destroy()
-
-    def on_reset_custom_splash(self, btn):
+    def on_reset_custom_splash(self):
         if self.temp_splash_file and os.path.exists(self.temp_splash_file):
             try: os.remove(self.temp_splash_file)
             except: pass
         self.temp_splash_file = None
         self.custom_splash_path = None
-        self.lbl_splash_info.set_text("Aktiv: Theme-Standardbild")
-        self.update_status("Eigenes Splash-Bild zurückgesetzt (nutze Theme-Standard).")
+        self.lbl_splash_info.setText("Aktiv: Theme-Standardbild")
+        self.statusbar.showMessage("Eigenes Splash-Bild zurückgesetzt.", 3000)
 
-    def on_reload(self, btn):
+    def on_reload(self):
         self.themes = find_themes()
         self.theme_list = sorted(self.themes.keys(), key=str.lower)
-        self.combo.remove_all()
-        for name in self.theme_list: self.combo.append_text(name)
+        self.combo.clear()
+        for name in self.theme_list:
+            self.combo.addItem(name)
         self.active_theme_path = get_active_theme()
         self.load_gallery()
 
-    def on_apply(self, btn):
-        name = self.combo.get_active_text()
+    def on_apply(self):
+        name = self.combo.currentText()
         if not name: return
         theme_path = self.themes[name]
         theme_dir = os.path.dirname(theme_path)
 
-        img_path = self.custom_splash_path if self.custom_splash_path else find_preview_image(theme_dir)
+        res_str = self.get_target_resolution()
+        try:
+            target_w, target_h = map(int, res_str.split("x"))
+        except ValueError:
+            target_w, target_h = DEFAULT_THEME_RES
+            res_str = f"{DEFAULT_THEME_RES[0]}x{DEFAULT_THEME_RES[1]}"
+
+        if not self.chk_scale_resolution.isChecked():
+            target_w, target_h = DEFAULT_THEME_RES
+            res_str_grub = "auto"
+        else:
+            res_str_grub = f"{res_str},auto"
 
         settings = {
             "GRUB_THEME": f'"{theme_path}"',
-            "GRUB_GFXMODE": "auto",
+            "GRUB_GFXMODE": f'"{res_str_grub}"',
             "GRUB_DISABLE_OS_PROBER": "false"
         }
 
+        # Korrektur: Keine Anführungszeichen um GRUB_FILE im bash-String, da es keine Leerzeichen hat
         bash_script = f"cp {GRUB_FILE} {GRUB_FILE}.backup && "
 
-        if img_path:
-            bash_script += f"cp {shlex.quote(img_path)} /boot/grub/splash.png && "
+        source_img_path = self.custom_splash_path if self.custom_splash_path else find_preview_image(theme_dir)
+
+        if source_img_path and os.path.exists(source_img_path):
+            try:
+                img = QImage(source_img_path)
+                if not img.isNull():
+                    scaled_img = img.scaled(target_w, target_h, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+
+                    if self.final_temp_splash and os.path.exists(self.final_temp_splash):
+                        try: os.remove(self.final_temp_splash)
+                        except: pass
+
+                    fd, self.final_temp_splash = tempfile.mkstemp(suffix=".png", prefix="grub_final_splash_")
+                    os.close(fd)
+                    scaled_img.save(self.final_temp_splash, "PNG")
+
+                    bash_script += f"cp {shlex.quote(self.final_temp_splash)} /boot/grub/splash.png && "
+            except Exception as e:
+                print(f"Fehler beim Verarbeiten des Splash-Bildes: {e}")
 
         for key, value in settings.items():
             bash_script += (
@@ -361,13 +422,17 @@ class GrubThemeSelector(Gtk.Window):
         bash_script += "update-grub"
 
         try:
-            subprocess.run(["pkexec", "bash", "-c", bash_script], check=True)
-            self.update_status("Erfolgreich: Theme, Splash-Bild, GFX und OS-Prober gesetzt!")
-        except subprocess.CalledProcessError:
-            self.update_status("Fehler: Passwort falsch oder Abbruch.")
+            result = subprocess.run(["pkexec", "bash", "-c", bash_script], capture_output=True, text=True)
+            if result.returncode == 0:
+                self.statusbar.showMessage("Erfolgreich: Theme, Splash-Bild und Einstellungen angewendet!", 5000)
+                QMessageBox.information(self, "Erfolg", "Das GRUB-Theme wurde erfolgreich angewendet!")
+            else:
+                QMessageBox.warning(self, "Fehler", f"Befehl fehlgeschlagen:\n{result.stderr}")
         except Exception as e:
-            self.update_status(f"Unerwarteter Fehler: {str(e)}")
+            QMessageBox.critical(self, "Kritischer Fehler", f"Unerwarteter Fehler:\n{str(e)}")
 
 if __name__ == "__main__":
-    app = GrubThemeSelector()
-    Gtk.main()
+    app = QApplication(sys.argv)
+    selector = GrubThemeSelector()
+    selector.show()
+    sys.exit(app.exec())
